@@ -1,0 +1,14 @@
+/* =============================================
+   app.css — Traditional asset (no Vite/Tailwind build)
+   Tailwind CSS is loaded via CDN in the blade template.
+   This file holds custom overrides only.
+   ============================================= */
+
+[x-cloak] {
+    display: none !important;
+}
+
+body {
+    font-family: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}

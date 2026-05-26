@@ -92,7 +92,7 @@ class FeedbackService
     public function generate(array $evaluation, string $transcript): string
     {
         $reason = $evaluation['error_reason'] ?? null;
-        
+
         if ($reason === 'empty' || trim($transcript) === '') {
             return 'Tidak ada jawaban suara yang terdeteksi.';
         }
@@ -105,34 +105,42 @@ class FeedbackService
             return 'Jawaban terlalu singkat atau tidak memiliki makna yang jelas untuk dievaluasi.';
         }
 
-        $score             = (int) $evaluation['score'];
+        $score              = (int) $evaluation['score'];
         $pronunciationScore = (int) $evaluation['pronunciation_score'];
-        $fluencyScore      = (int) $evaluation['fluency_score'];
-        $grammarScore      = (int) $evaluation['grammar_score'];
+        $fluencyScore       = (int) $evaluation['fluency_score'];
+        $grammarScore       = (int) $evaluation['grammar_score'];
+        $similarityPct      = (float) ($evaluation['details']['similarity_pct'] ?? 50.0);
 
-        $band = $this->scoreBand($score);
-
+        $band  = $this->scoreBand($score);
         $parts = [];
 
         // 1. Opening sentence
         $parts[] = $this->pick($this->openings[$band]);
 
-        // 2. Fluency feedback
+        // 2. Pronunciation similarity hint (injected before fluency when score is low)
+        //    This makes the feedback directly address phonetic accuracy.
+        if ($similarityPct < 20.0) {
+            $parts[] = 'Kata-kata yang diucapkan terdeteksi sangat berbeda dari konteks pertanyaan. Pastikan Anda menjawab sesuai topik pertanyaan dengan kosakata bahasa Jepang yang relevan.';
+        } elseif ($similarityPct < 40.0) {
+            $parts[] = 'Pelafalan Anda masih kurang sesuai dengan pola jawaban yang diharapkan. Coba pelajari kembali kosakata kunci untuk pertanyaan ini dan ucapkan dengan lebih jelas.';
+        }
+
+        // 3. Fluency feedback
         $parts[] = $this->fluencyFeedback[$this->subBand($fluencyScore)];
 
-        // 3. Grammar feedback
+        // 4. Grammar feedback
         $parts[] = $this->grammarFeedback[$this->subBand($grammarScore)];
 
-        // 4. Pronunciation feedback
+        // 5. Pronunciation feedback (based on derived pronunciation_score)
         $parts[] = $this->pronunciationFeedback[$this->subBand($pronunciationScore)];
 
-        // 5. Transcript length note
+        // 6. Short answer note
         $len = mb_strlen(trim($transcript));
         if ($len < 15 && $score < 60) {
             $parts[] = 'Jawaban Anda sangat singkat — coba latihan menjawab dengan minimal 1–2 kalimat lengkap.';
         }
 
-        // 6. Closing encouragement
+        // 7. Closing encouragement
         $parts[] = $this->pick($this->closings[$band]);
 
         return implode(' ', $parts);

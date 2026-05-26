@@ -11,10 +11,15 @@ use App\Models\Question;
  * No AI is used in this service — only transcript analysis.
  *
  * Score breakdown (total 100 pts):
- *   - Length score      : 0–30 pts  (based on transcript character count)
- *   - Keyword score     : 0–35 pts  (question-specific Japanese keyword matching)
- *   - Structure score   : 0–20 pts  (Japanese sentence structure patterns)
- *   - Duration score    : 0–15 pts  (answer duration reasonableness)
+ *   - Pronunciation similarity : 0–35 pts  (similar_text vs. ideal answer patterns)
+ *   - Keyword score            : 0–30 pts  (question-specific Japanese keyword matching)
+ *   - Structure score          : 0–20 pts  (Japanese sentence structure patterns)
+ *   - Duration score           : 0–15 pts  (answer duration — penalized if similarity < 40%)
+ *   - Length score             : 0–15 pts  (excluded entirely if similarity < 40%)
+ *
+ * NOTE: Length score and duration score are down-weighted when pronunciation
+ *       similarity is below 40%, to prevent inflated scores from long but
+ *       phonetically incorrect answers.
  */
 class ScoringService
 {
@@ -26,7 +31,7 @@ class ScoringService
         1 => [
             // タバコを吸いますか。お酒を飲みますか。
             'keywords'  => ['吸いません', '飲みません', '吸います', '飲みます', 'タバコ', 'お酒', 'たばこ', '酒', '煙草'],
-            'negatives' => ['はい、吸います', 'はい、飲みます'], // negative keywords reduce score slightly
+            'negatives' => ['はい、吸います', 'はい、飲みます'],
         ],
         2 => [
             // 短所と長所を教えてください。
@@ -70,8 +75,66 @@ class ScoringService
         ],
         10 => [
             // 日本の文化で何を知っていますか。
-            'keywords'  => ['文化', 'アニメ', '食べ物', '礼儀', '食べ物', '寿司', 'ラーメン', '桜', '祭り', '伝統', '着物', '富士山', '温泉', 'マナー'],
+            'keywords'  => ['文化', 'アニメ', '食べ物', '礼儀', '寿司', 'ラーメン', '桜', '祭り', '伝統', '着物', '富士山', '温泉', 'マナー'],
             'negatives' => [],
+        ],
+    ];
+
+    /**
+     * Pronunciation bank: maps question order_index to ideal answer phrases.
+     * These phrases are used to compute text similarity against the transcript.
+     * Multiple variants are accepted — the best matching score is used.
+     */
+    private array $pronunciationBank = [
+        1 => [
+            'はい、タバコは吸いません。お酒も飲みません。',
+            'いいえ、タバコは吸いません。お酒は少し飲みます。',
+            'タバコは吸いません。お酒も飲みません。',
+        ],
+        2 => [
+            '私の長所は責任感が強いことです。短所は少し心配性なところです。',
+            '長所は真面目なところです。短所は時間がかかることです。',
+            '私の短所は慎重すぎることで、長所は努力を続けられることです。',
+        ],
+        3 => [
+            '日本で仕事している家族はいません。',
+            'はい、兄が日本で仕事しています。',
+            '親戚は日本にいません。家族も日本にはいません。',
+        ],
+        4 => [
+            '日本語を一年間勉強しました。',
+            '学校で六ヶ月間日本語を勉強しました。',
+            '独学で日本語を二年間勉強しました。JLPTのN4を持っています。',
+        ],
+        5 => [
+            'はい、共同生活は大丈夫です。問題ありません。',
+            '共同生活は慣れています。一緒に住むことができます。',
+            'はい、大丈夫です。協力して生活できます。',
+        ],
+        6 => [
+            'はい、断食はやっています。ラマダンの時に断食します。',
+            'いいえ、断食はやっていません。',
+            'はい、私はムスリムなので断食します。',
+        ],
+        7 => [
+            'はい、お祈りの時間は調整できます。',
+            '休憩の時間に合わせてお祈りします。仕事に影響はありません。',
+            'お祈りの時間は工夫して調整できます。大丈夫です。',
+        ],
+        8 => [
+            '御社で働きたい理由は、経験を積みたいからです。',
+            '日本で成長したいので、御社で仕事したいです。',
+            '御社に貢献したいと思います。日本での仕事の機会が欲しいです。',
+        ],
+        9 => [
+            '日本へ行く目的は八割仕事で、二割は経験です。',
+            '仕事が九割で、遊びは一割です。',
+            '目的は将来のキャリアのために働くことです。',
+        ],
+        10 => [
+            '日本の文化といえばアニメや食べ物、礼儀が好きです。',
+            '日本の文化で知っているのは寿司やラーメン、桜の花見です。',
+            '日本の伝統文化は着物や祭り、富士山などが有名です。',
         ],
     ];
 
@@ -111,79 +174,113 @@ class ScoringService
             }
         }
 
-        $lengthScore    = $this->scoreLengthNormalized($transcript);
-        $keywordScore   = $this->scoreKeywords($question, $transcript);
+        // 1. Pronunciation similarity (primary signal, 0–35 pts)
+        $similarityPct    = $this->computeSimilarity($question, $transcript);
+        $pronunciationRaw = $this->scorePronunciationSimilarity($similarityPct);
+
+        // 2. Keyword matching (0–30 pts)
+        $keywordScore = $this->scoreKeywords($question, $transcript);
+
+        // 3. Sentence structure (0–20 pts)
         $structureScore = $this->scoreStructure($transcript);
-        $durationScore  = $this->scoreDuration($durationSeconds);
 
-        // Weighted total out of 100
-        $total = $lengthScore + $keywordScore + $structureScore + $durationScore;
-        $total = (int) max(10, min(100, round($total)));
+        // 4. Duration (0–15 pts) — penalized when similarity is low
+        $durationRaw   = $this->scoreDuration($durationSeconds);
+        $durationScore = $this->applyLowSimilarityPenalty($durationRaw, $similarityPct);
 
-        // Sub-scores derived from components (each 0–100)
-        $pronunciationScore = $this->derivePronunciationScore($structureScore, $lengthScore);
-        $fluencyScore       = $this->deriveFluencyScore($durationScore, $lengthScore);
+        // 5. Length (0–15 pts) — excluded entirely when similarity < 40%
+        $lengthScore = $similarityPct >= 40.0
+            ? $this->scoreLengthNormalized($transcript)
+            : 0;
+
+        // ── Total ─────────────────────────────────────────────────────────────
+        $total = $pronunciationRaw + $keywordScore + $structureScore + $durationScore + $lengthScore;
+
+        // Hard cap: if similarity is critically low (< 20%), cap total at 30
+        if ($similarityPct < 20.0) {
+            $total = min($total, 30);
+        }
+
+        $total = (int) max(0, min(100, round($total)));
+
+        // ── Derived sub-scores (0–100 scale shown to user) ───────────────────
+        $pronunciationScore = $this->derivePronunciationScore($similarityPct, $structureScore);
+        $fluencyScore       = $this->deriveFluencyScore($durationScore, $structureScore);
         $grammarScore       = $this->deriveGrammarScore($structureScore, $keywordScore);
 
         return [
-            'score'              => $total,
+            'score'               => $total,
             'pronunciation_score' => $pronunciationScore,
             'fluency_score'       => $fluencyScore,
             'grammar_score'       => $grammarScore,
             'level'               => $this->determineLevel($total),
             'details'             => [
-                'length_score'    => $lengthScore,
+                'similarity_pct'  => round($similarityPct, 1),
+                'pronunc_score'   => $pronunciationRaw,
                 'keyword_score'   => $keywordScore,
                 'structure_score' => $structureScore,
                 'duration_score'  => $durationScore,
+                'length_score'    => $lengthScore,
             ],
         ];
+    }
+
+    // -------------------------------------------------------------------------
+    // Pronunciation similarity
+    // -------------------------------------------------------------------------
+
+    private function computeSimilarity(Question $question, string $transcript): float
+    {
+        $orderIndex = (int) $question->order_index;
+        $patterns   = $this->pronunciationBank[$orderIndex] ?? [];
+
+        if (empty($patterns)) {
+            return 50.0;
+        }
+
+        $best = 0.0;
+        foreach ($patterns as $pattern) {
+            similar_text($transcript, $pattern, $pct);
+            if ($pct > $best) {
+                $best = $pct;
+            }
+        }
+        return (float) $best;
+    }
+
+    private function scorePronunciationSimilarity(float $similarityPct): int
+    {
+        if ($similarityPct >= 70.0) return 35;
+        if ($similarityPct >= 55.0) return 28;
+        if ($similarityPct >= 40.0) return 20;
+        if ($similarityPct >= 25.0) return 12;
+        if ($similarityPct >= 10.0) return 5;
+        return 0;
+    }
+
+    private function applyLowSimilarityPenalty(int $rawScore, float $similarityPct): int
+    {
+        if ($similarityPct >= 40.0) return $rawScore;
+        if ($similarityPct >= 20.0) return (int) round($rawScore * 0.4);
+        return 0;
     }
 
     // -------------------------------------------------------------------------
     // Scoring components
     // -------------------------------------------------------------------------
 
-    /**
-     * Score based on transcript character count (Japanese chars are compact).
-     * Ideal answer: 30–120 characters → max 30 pts
-     */
     private function scoreLengthNormalized(string $transcript): int
     {
         $len = mb_strlen($transcript);
-
-        if ($len === 0) {
-            return 0;
-        }
-
-        if ($len < 5) {
-            return 3;
-        }
-
-        if ($len < 15) {
-            return 10;
-        }
-
-        if ($len < 30) {
-            return 18;
-        }
-
-        if ($len < 60) {
-            return 24;
-        }
-
-        if ($len < 120) {
-            return 30;
-        }
-
-        // Very long answer — still good but diminishing return
-        return 28;
+        if ($len === 0)  return 0;
+        if ($len < 5)    return 2;
+        if ($len < 15)   return 5;
+        if ($len < 30)   return 9;
+        if ($len < 60)   return 12;
+        if ($len < 120)  return 15;
+        return 13;
     }
 
-    /**
-     * Score keyword matches against question-specific keyword bank.
-     * Max 35 pts.
-     */
     private function scoreKeywords(Question $question, string $transcript): int
     {
         $orderIndex = (int) $question->order_index;
@@ -210,107 +307,69 @@ class ScoringService
         }
 
         if (count($keywords) === 0) {
-            return 18;
+            return 15;
         }
 
         $ratio = $hits / count($keywords);
-
-        // Scale: 0 hits → 5 pts (they spoke something), many hits → 35 pts
-        return (int) min(35, max(5, round(5 + ($ratio * 30))));
+        return (int) min(30, max(3, round(3 + ($ratio * 27))));
     }
 
-    /**
-     * Fallback keyword scoring when no bank is defined for the question.
-     */
     private function scoreGenericKeywords(string $transcript): int
     {
         $genericKeywords = ['です', 'ます', 'はい', 'います', 'できます', 'します', 'ました'];
         $hits = 0;
-
         foreach ($genericKeywords as $kw) {
             if (mb_strpos($transcript, $kw) !== false) {
                 $hits++;
             }
         }
-
-        return (int) min(35, max(8, $hits * 5));
+        return (int) min(30, max(5, $hits * 4));
     }
 
-    /**
-     * Score Japanese sentence structure patterns.
-     * Max 20 pts.
-     */
     private function scoreStructure(string $transcript): int
     {
         $matches = 0;
-
         foreach ($this->structurePatterns as $pattern) {
             if (preg_match($pattern, $transcript)) {
                 $matches++;
             }
         }
-
         return (int) min(20, $matches * 4);
     }
 
-    /**
-     * Score based on answer duration.
-     * Ideal range: 5–60 seconds → max 15 pts
-     */
     private function scoreDuration(?int $durationSeconds): int
     {
         if ($durationSeconds === null || $durationSeconds <= 0) {
-            return 8; // neutral — no duration data
-        }
-
-        if ($durationSeconds < 3) {
-            return 2;
-        }
-
-        if ($durationSeconds < 5) {
             return 5;
         }
-
-        if ($durationSeconds < 10) {
-            return 10;
-        }
-
-        if ($durationSeconds <= 60) {
-            return 15;
-        }
-
-        if ($durationSeconds <= 120) {
-            return 12;
-        }
-
-        // Very long answer
+        if ($durationSeconds < 3)    return 2;
+        if ($durationSeconds < 5)    return 5;
+        if ($durationSeconds < 10)   return 10;
+        if ($durationSeconds <= 60)  return 15;
+        if ($durationSeconds <= 120) return 12;
         return 8;
     }
 
     // -------------------------------------------------------------------------
-    // Derived sub-scores (0–100 scale)
+    // Derived sub-scores
     // -------------------------------------------------------------------------
 
-    private function derivePronunciationScore(int $structureScore, int $lengthScore): int
+    private function derivePronunciationScore(float $similarityPct, int $structureScore): int
     {
-        // Pronunciation is estimated from structure clarity and answer length
-        $base = (int) round(($structureScore / 20) * 60 + ($lengthScore / 30) * 40);
-
-        return (int) max(20, min(100, $base));
+        $base = (int) round(($similarityPct / 100) * 80 + ($structureScore / 20) * 20);
+        return (int) max(0, min(100, $base));
     }
 
-    private function deriveFluencyScore(int $durationScore, int $lengthScore): int
+    private function deriveFluencyScore(int $durationScore, int $structureScore): int
     {
-        $base = (int) round(($durationScore / 15) * 50 + ($lengthScore / 30) * 50);
-
-        return (int) max(20, min(100, $base));
+        $base = (int) round(($durationScore / 15) * 50 + ($structureScore / 20) * 50);
+        return (int) max(0, min(100, $base));
     }
 
     private function deriveGrammarScore(int $structureScore, int $keywordScore): int
     {
-        $base = (int) round(($structureScore / 20) * 50 + ($keywordScore / 35) * 50);
-
-        return (int) max(20, min(100, $base));
+        $base = (int) round(($structureScore / 20) * 50 + ($keywordScore / 30) * 50);
+        return (int) max(0, min(100, $base));
     }
 
     // -------------------------------------------------------------------------
@@ -323,17 +382,16 @@ class ScoringService
         if ($score >= 70) return 'Baik';
         if ($score >= 55) return 'Cukup';
         if ($score >= 40) return 'Perlu Latihan';
-
         return 'Perlu Banyak Latihan';
     }
 
     private function zeroScoreResult(string $reason): array
     {
         $level = match ($reason) {
-            'empty' => 'Tidak Menjawab',
+            'empty'       => 'Tidak Menjawab',
             'no_japanese' => 'Tidak Valid (Bukan Bahasa Jepang)',
             'meaningless' => 'Tidak Valid (Jawaban Tidak Bermakna)',
-            default => 'Tidak Valid',
+            default       => 'Tidak Valid',
         };
 
         return [
@@ -344,10 +402,12 @@ class ScoringService
             'level'               => $level,
             'error_reason'        => $reason,
             'details'             => [
-                'length_score'    => 0,
+                'similarity_pct'  => 0,
+                'pronunc_score'   => 0,
                 'keyword_score'   => 0,
                 'structure_score' => 0,
                 'duration_score'  => 0,
+                'length_score'    => 0,
             ],
         ];
     }

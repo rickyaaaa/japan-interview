@@ -29,9 +29,8 @@ class InterviewController extends Controller
     public function storeSession(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'                 => ['required', 'string', 'max:255'],
-            'email'                => ['nullable', 'email', 'max:255'],
-            'candidate_identifier' => ['nullable', 'string', 'max:255'],
+            'username' => ['required', 'string', 'max:255'],
+            'password' => ['required', 'string', 'max:255'],
         ]);
 
         $questionCount = Question::active()->count();
@@ -43,7 +42,11 @@ class InterviewController extends Controller
         }
 
         $session = DB::transaction(function () use ($validated): TestSession {
-            $candidate = Candidate::create($validated);
+            $candidate = Candidate::create([
+                'name'                 => $validated['username'],
+                'email'                => null,
+                'candidate_identifier' => null,
+            ]);
 
             return TestSession::create([
                 'candidate_id'           => $candidate->id,

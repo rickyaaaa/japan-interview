@@ -7,6 +7,8 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
+use Illuminate\Support\Facades\Schema;
+
 class DatabaseSeeder extends Seeder
 {
     /**
@@ -15,8 +17,10 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         // Truncate tables to prevent duplicates
+        Schema::disableForeignKeyConstraints();
         User::truncate();
         Question::truncate();
+        Schema::enableForeignKeyConstraints();
 
         // Seed Admin User
         User::create([

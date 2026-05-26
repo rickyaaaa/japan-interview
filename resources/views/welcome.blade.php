@@ -16,7 +16,15 @@
                 },
             };
         </script>
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
+        <!-- Tailwind CSS via CDN (no build step needed) -->
+        <script src="https://cdn.tailwindcss.com"></script>
+
+        <!-- AlpineJS via CDN -->
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+
+        <!-- App assets (traditional, no Vite) -->
+        <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+        <script src="{{ asset('js/app.js') }}" defer></script>
     </head>
     <body class="min-h-screen bg-zinc-100 text-zinc-950 antialiased">
         <main
@@ -77,40 +85,31 @@
                 >
                     <div class="flex items-start justify-between gap-4">
                         <div>
-                            <h2 class="text-xl font-semibold text-zinc-950">Data kandidat</h2>
-                            <p class="mt-1 text-sm leading-6 text-zinc-500">Masukkan identitas sebelum sesi dimulai.</p>
+                            <h2 class="text-xl font-semibold text-zinc-950">Login</h2>
+                            <p class="mt-1 text-sm leading-6 text-zinc-500">Silakan login untuk memulai sesi tes.</p>
                         </div>
                         <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Demo</span>
                     </div>
 
                     <div class="mt-6 space-y-4">
                         <label class="block">
-                            <span class="text-sm font-medium text-zinc-700">Nama kandidat</span>
+                            <span class="text-sm font-medium text-zinc-700">Username</span>
                             <input
-                                x-model="candidate.name"
+                                x-model="candidate.username"
                                 type="text"
                                 required
-                                placeholder="Contoh: Siti Nurhaliza"
+                                placeholder="Username"
                                 class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
                             >
                         </label>
 
                         <label class="block">
-                            <span class="text-sm font-medium text-zinc-700">Email</span>
+                            <span class="text-sm font-medium text-zinc-700">Password</span>
                             <input
-                                x-model="candidate.email"
-                                type="email"
-                                placeholder="nama@email.com"
-                                class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
-                            >
-                        </label>
-
-                        <label class="block">
-                            <span class="text-sm font-medium text-zinc-700">ID kandidat</span>
-                            <input
-                                x-model="candidate.candidate_identifier"
-                                type="text"
-                                placeholder="JP-INT-001"
+                                x-model="candidate.password"
+                                type="password"
+                                required
+                                placeholder="Password"
                                 class="mt-2 w-full rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm text-zinc-950 outline-none transition focus:border-emerald-600 focus:ring-4 focus:ring-emerald-100"
                             >
                         </label>
@@ -122,7 +121,7 @@
                         type="submit"
                         class="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-md bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-4 focus:ring-zinc-300"
                     >
-                        Mulai tes
+                        Login
                         <span aria-hidden="true">→</span>
                     </button>
                 </form>
@@ -131,8 +130,8 @@
             <section x-show="step === 'interview'" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
                 <div class="grid gap-6 lg:grid-cols-[280px_1fr]">
                     <aside class="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
-                        <p class="text-sm font-semibold text-zinc-950" x-text="candidate.name"></p>
-                        <p class="mt-1 truncate text-xs text-zinc-500" x-text="candidate.email || candidate.candidate_identifier || 'Candidate session'"></p>
+                        <p class="text-sm font-semibold text-zinc-950" x-text="candidate.username"></p>
+                        <p class="mt-1 truncate text-xs text-zinc-500">Administrator</p>
 
                         <div class="mt-6">
                             <div class="flex items-center justify-between text-sm">
@@ -283,8 +282,8 @@
                 <div class="grid gap-6 lg:grid-cols-[340px_1fr]">
                     <aside class="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
                         <p class="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-700">Hasil akhir</p>
-                        <h2 class="mt-3 text-3xl font-semibold text-zinc-950" x-text="candidate.name"></h2>
-                        <p class="mt-2 text-sm text-zinc-500" x-text="candidate.email || candidate.candidate_identifier || 'Candidate session'"></p>
+                        <h2 class="mt-3 text-3xl font-semibold text-zinc-950" x-text="candidate.username"></h2>
+                        <p class="mt-2 text-sm text-zinc-500">Administrator</p>
 
                         <div class="mt-8 rounded-md bg-zinc-950 p-5 text-white">
                             <p class="text-sm font-medium text-zinc-300">Total score</p>

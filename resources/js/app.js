@@ -16,9 +16,8 @@ Alpine.data('interviewApp', () => ({
     config: { ...defaultConfig, ...(window.interviewConfig || {}) },
     step: 'start',
     candidate: {
-        name: '',
-        email: '',
-        candidate_identifier: '',
+        username: 'admin',
+        password: 'password',
     },
     session: null,
     questions: [],
@@ -93,7 +92,7 @@ Alpine.data('interviewApp', () => ({
     },
 
     async startInterview() {
-        if (!this.candidate.name.trim()) {
+        if (!this.candidate.username.trim() || !this.candidate.password.trim()) {
             return;
         }
 

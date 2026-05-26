@@ -18,34 +18,41 @@ class TranscriptionService
 {
     public function transcribe(UploadedFile $audio): array
     {
-        $response = $this->client()
-            ->attach(
-                'file',
-                file_get_contents($audio->getRealPath()),
-                $audio->getClientOriginalName() ?: 'answer.webm',
-            )
-            ->post($this->url('/audio/transcriptions'), [
-                'model'           => config('openai.transcription_model'),
-                'language'        => 'ja',
-                'response_format' => 'json',
-            ]);
+        try {
+            $response = $this->client()
+                ->attach(
+                    'file',
+                    file_get_contents($audio->getRealPath()),
+                    $audio->getClientOriginalName() ?: 'answer.webm',
+                )
+                ->post($this->url('/audio/transcriptions'), [
+                    'model'           => config('openai.transcription_model'),
+                    'language'        => 'ja',
+                    'response_format' => 'json',
+                ]);
 
-        if ($response->failed()) {
-            throw new RuntimeException('OpenAI Whisper transcription failed: ' . $response->body());
+            if ($response->failed()) {
+                return [
+                    'text' => '',
+                    'raw'  => $response->json() ?? ['error' => 'Whisper API Request failed'],
+                ];
+            }
+
+            $payload = $response->json();
+            $text    = trim((string) Arr::get($payload, 'text', ''));
+
+            return [
+                'text' => $text,
+                'raw'  => $payload,
+            ];
+        } catch (\Throwable $exception) {
+            // Safely handle network errors or other exceptions
+            // by returning an empty string, so ScoringService triggers zeroScoreResult('empty')
+            return [
+                'text' => '',
+                'raw'  => ['error' => $exception->getMessage()],
+            ];
         }
-
-        $payload = $response->json();
-        $text    = trim((string) Arr::get($payload, 'text', ''));
-
-        if ($text === '') {
-            // Return empty transcript instead of throwing an error
-            // so that ScoringService can give it a 0 score.
-        }
-
-        return [
-            'text' => $text,
-            'raw'  => $payload,
-        ];
     }
 
     protected function client(): PendingRequest
