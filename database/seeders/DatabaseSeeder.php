@@ -3,38 +3,49 @@
 namespace Database\Seeders;
 
 use App\Models\Question;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
-    use WithoutModelEvents;
-
     /**
      * Seed the application's database.
      */
     public function run(): void
     {
-        collect([
-            'タバコを吸いますか。お酒を飲みますか。',
+        // Truncate tables to prevent duplicates
+        User::truncate();
+        Question::truncate();
+
+        // Seed Admin User
+        User::create([
+            'name' => 'Admin',
+            'email' => 'admin',
+            'password' => Hash::make('password'),
+        ]);
+
+        // Seed 10 Active Japanese Interview Questions
+        $questions = [
+            '自己紹介をしてください。',
             '短所と長所を教えてください。',
-            '日本で仕事している家族か親戚はいますか。',
-            'どれぐらい日本語を勉強しましたか。',
-            '共同生活は大丈夫ですか。',
-            '断食はやっていますか。',
-            'お祈りの時間を調整できますか。',
-            '日本の仕事の中で職種がいっぱいありますが、なんで我々の会社で仕事したいですか。',
-            '日本へ行く目的は、割合にすると、何割仕事か、何割遊びか、正直に答えてください。',
-            '日本の文化で何を知っていますか。',
-        ])->each(function (string $japaneseText, int $index): void {
-            Question::updateOrCreate(
-                ['order_index' => $index + 1],
-                [
-                    'japanese_text' => $japaneseText,
-                    'indonesian_translation' => null,
-                    'is_active' => true,
-                ],
-            );
-        });
+            '志望動機は何ですか。',
+            'なぜ日本で働きたいのですか。',
+            '将来の夢は何ですか。',
+            '前の仕事を辞めた理由は何ですか。',
+            'あなたの専門スキルは何ですか。',
+            'チームワークで大切なことは何だと思いますか。',
+            'ストレスを感じたとき、どうやって解消しますか。',
+            '日本の文化についてどう思いますか。',
+        ];
+
+        foreach ($questions as $index => $text) {
+            Question::create([
+                'order_index' => $index + 1,
+                'japanese_text' => $text,
+                'indonesian_translation' => '',
+                'is_active' => true,
+            ]);
+        }
     }
 }
