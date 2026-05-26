@@ -16,15 +16,33 @@
                 },
             };
         </script>
-        <!-- Tailwind CSS via CDN (no build step needed) -->
+        <!-- Style x-cloak darurat -->
+        <style>[x-cloak] { display: none !important; }</style>
+
+        <!-- 1. Tailwind CDN -->
         <script src="https://cdn.tailwindcss.com"></script>
 
-        <!-- AlpineJS via CDN -->
-        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+        <!-- 2. Tailwind Config -->
+        <script>
+            tailwind.config = {
+                theme: {
+                    extend: {
+                        fontFamily: {
+                            sans: ['Instrument Sans', 'sans-serif'],
+                        }
+                    }
+                }
+            }
+        </script>
 
-        <!-- App assets (traditional, no Vite) -->
+        <!-- 3. Tradisional CSS -->
         <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+
+        <!-- 4. App JS (Must be loaded before AlpineJS CDN to register components before Alpine initializes) -->
         <script src="{{ asset('js/app.js') }}" defer></script>
+
+        <!-- 5. AlpineJS -->
+        <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     </head>
     <body class="min-h-screen bg-zinc-100 text-zinc-950 antialiased">
         <main

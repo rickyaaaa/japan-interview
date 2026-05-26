@@ -5,9 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login Administrator</title>
     
-    <!-- Menggunakan CDN Tailwind dan tradisional CSS seperti instruksi -->
+    <!-- Style x-cloak darurat -->
+    <style>[x-cloak] { display: none !important; }</style>
+
+    <!-- 1. Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- 2. Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Instrument Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 3. Tradisional CSS -->
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+
+    <!-- 4. App JS (Must be loaded before AlpineJS CDN to register components before Alpine initializes) -->
+    <script src="{{ asset('js/app.js') }}" defer></script>
+
+    <!-- 5. AlpineJS -->
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
 </head>
 <body class="bg-zinc-100 flex items-center justify-center min-h-screen antialiased">
     <div class="bg-white p-8 rounded-lg shadow-sm border border-zinc-200 w-full max-w-md">
